@@ -20,12 +20,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from playwright.sync_api import sync_playwright
 
-from donnees import DONNEES, VIDE
+from donnees import COUPE, DONNEES, VIDE
 
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8921").rstrip("/")
 
 PAGES = ["index.html", "live.html", "players.html", "clubs.html",
-         "standings.html", "recruitment.html", "data.html",
+         "competitions.html", "league-northern-league.html",
+         "recruitment.html", "data.html",
          "club-northgate-united.html", "player-player-1.html"]
 
 # Controle negatif : des noms REELS qui ne doivent apparaitre nulle part. Le
@@ -96,21 +97,94 @@ with sync_playwright() as p:
         for reel in REELS:
             verif(f"{f} : ne nomme pas « {reel} »", reel.lower() not in corps.lower())
 
-    # ---- 2. le classement s'additionne -----------------------------------
-    pg.goto(f"{BASE}/standings.html", wait_until="networkidle")
-    lignes = pg.evaluate("""() => [...document.querySelectorAll('.tab tbody tr')].map(
-        tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))""")
-    verif("classement : autant de lignes que de clubs classes",
-          len(lignes) == len(DONNEES["classement"]), str(len(lignes)))
-    for l in lignes:
-        # colonnes : rang, club, P, W, D, L, GF, GA, GD, Pts
-        p_, w, d, lo, gf, ga, gd, pts = (int(x.replace("+", "")) for x in l[2:10])
-        verif(f"classement {l[1][:18]} : joues = V+N+D", p_ == w + d + lo,
-              f"{p_} vs {w}+{d}+{lo}")
-        verif(f"classement {l[1][:18]} : points = 3V+N", pts == 3 * w + d,
-              f"{pts} vs {3 * w + d}")
-        verif(f"classement {l[1][:18]} : difference = GF-GA", gd == gf - ga,
-              f"{gd} vs {gf - ga}")
+    # ---- 2. LES LIGUES, PUIS LES CLUBS -----------------------------------
+    # C'est l'ordre demande par le client (« il faut les ligues, ensuite les
+    # clubs »), et c'est aussi la structure du sport : un club appartient a UN
+    # championnat, et c'est ce qui donne un sens au mot « premier ».
+    pg.goto(f"{BASE}/competitions.html", wait_until="networkidle")
+    cartes = pg.evaluate("""() => [...document.querySelectorAll('.carte')].map(
+        a => a.getAttribute('href'))""")
+    verif("competitions : toutes les competitions sont listees",
+          len(cartes) == len(DONNEES["ligues"]),
+          f'{len(cartes)} vs {len(DONNEES["ligues"])}')
+
+    for ligue in DONNEES["ligues"]:
+        pg.goto(f"{BASE}/league-{ligue['cle']}.html", wait_until="networkidle")
+        corps = pg.inner_text("body")
+        rangs = pg.evaluate("""() => [...document.querySelectorAll('.tab tbody tr')].map(
+            tr => [...tr.querySelectorAll('td')].map(td => td.textContent.trim()))""")
+
+        if ligue["type"] == "coupe":
+            # Une coupe se joue en elimination directe : un tableau de
+            # classement y serait faux SUR LE FOND, pas seulement vide.
+            verif(f"{ligue['cle']} : la coupe n'affiche aucun classement",
+                  len(rangs) == 0, f"{len(rangs)} lignes")
+            verif(f"{ligue['cle']} : la page explique pourquoi",
+                  "knockout" in corps.lower())
+            continue
+
+        table = DONNEES["classements"][ligue["cle"]]
+        verif(f"{ligue['cle']} : le classement compte les clubs de la ligue",
+              len(rangs) == len(table), f"{len(rangs)} vs {len(table)}")
+        clubs_ligue = {club["nom"] for club in DONNEES["clubs"]
+                       if club["ligue"] == ligue["cle"]}
+        noms_table = {r[1] for r in rangs}
+        verif(f"{ligue['cle']} : le classement ne contient QUE ses clubs",
+              noms_table <= clubs_ligue,
+              str(sorted(noms_table - clubs_ligue)[:3]))
+        for r in rangs:
+            p_, w, d, lo, gf, ga, gd, pts = (int(x.replace("+", "")) for x in r[2:10])
+            verif(f"{ligue['cle']} {r[1][:16]} : joues = V+N+D", p_ == w + d + lo,
+                  f"{p_} vs {w}+{d}+{lo}")
+            verif(f"{ligue['cle']} {r[1][:16]} : points = 3V+N", pts == 3 * w + d,
+                  f"{pts} vs {3 * w + d}")
+            verif(f"{ligue['cle']} {r[1][:16]} : GD = GF-GA", gd == gf - ga,
+                  f"{gd} vs {gf - ga}")
+
+        # AU NIVEAU DE LA LIGUE, lu dans le tableau AFFICHE. Chaque ligne peut
+        # s'additionner correctement et la ligue rester impossible : c'etait le
+        # cas de la premiere version, 24 journees pour huit clubs et 52
+        # victoires contre 93 defaites. Un lecteur de football le voit tout de
+        # suite.
+        col = lambda i: [int(r[i].replace("+", "")) for r in rangs]
+        verif(f"{ligue['cle']} : autant de victoires que de defaites dans la ligue",
+              sum(col(3)) == sum(col(5)), f"{sum(col(3))} V vs {sum(col(5))} D")
+        verif(f"{ligue['cle']} : le total des nuls est pair",
+              sum(col(4)) % 2 == 0, str(sum(col(4))))
+        verif(f"{ligue['cle']} : les buts marques valent les buts encaisses",
+              sum(col(6)) == sum(col(7)), f"{sum(col(6))} vs {sum(col(7))}")
+        verif(f"{ligue['cle']} : le nombre de journees tient dans un aller-retour",
+              all(j == 2 * (len(rangs) - 1) for j in col(2)),
+              f"{set(col(2))} pour {len(rangs)} clubs")
+
+    # Un club n'apparait que dans le classement de SON championnat.
+    vus = {}
+    for ligue in DONNEES["ligues"]:
+        if ligue["type"] != "championnat":
+            continue
+        for slug in ligue["clubs"]:
+            verif(f"{slug} : n'est que dans un championnat", slug not in vus,
+                  f'aussi dans {vus.get(slug)}')
+            vus[slug] = ligue["cle"]
+    verif("chaque club a un championnat", len(vus) == len(DONNEES["clubs"]),
+          f'{len(vus)} vs {len(DONNEES["clubs"])}')
+
+    # La page Clubs les groupe SOUS leur ligue.
+    pg.goto(f"{BASE}/clubs.html", wait_until="networkidle")
+    titres = pg.evaluate("() => [...document.querySelectorAll('.sec-h h2')].map(h => h.textContent.trim())")
+    noms_ligues = [l["nom"] for l in DONNEES["ligues"] if l["type"] == "championnat"]
+    verif("clubs : la page groupe les clubs sous chaque championnat",
+          all(n in titres for n in noms_ligues), str(titres[:6]))
+    verif("clubs : les trente-deux clubs sont la",
+          pg.locator(".carte").count() == len(DONNEES["clubs"]),
+          str(pg.locator(".carte").count()))
+
+    # Une fiche club renvoie a SA ligue.
+    c0 = DONNEES["clubs"][0]
+    pg.goto(f"{BASE}/club-{c0['slug']}.html", wait_until="networkidle")
+    liens = pg.evaluate("() => [...document.querySelectorAll('a')].map(a => a.getAttribute('href'))")
+    verif("fiche club : renvoie vers sa competition",
+          f"league-{c0['ligue']}.html" in liens, str(c0["ligue"]))
 
     # ---- 3. les onglets de scores ----------------------------------------
     pg.goto(f"{BASE}/live.html", wait_until="networkidle")
@@ -266,6 +340,39 @@ with sync_playwright() as p:
     # ci-dessus vert sans rien avoir lu.
     verif("accent : la feuille lue contient bien l'orange",
           "FF7A18" in css.upper(), f"{len(css)} octets lus")
+
+    # ---- 8. AUCUN LIEN MORT ----------------------------------------------
+    # Le jeu de donnees vient de changer (dix clubs -> trente-deux, un
+    # classement -> quatre). Des pages de l'ancienne version restaient sur le
+    # disque et pointaient vers une page supprimee. Un lien mort dans une
+    # maquette fait douter de tout le reste, et il ne se voit qu'en cliquant.
+    import urllib.request
+    import urllib.error
+    liens = set()
+    for f in PAGES + ["competitions.html", "clubs.html"]:
+        pg.goto(f"{BASE}/{f}", wait_until="domcontentloaded")
+        for href in pg.evaluate("() => [...document.querySelectorAll('a')]"
+                                ".map(a => a.getAttribute('href'))"):
+            if href and not href.startswith(("http", "#", "mailto:")):
+                liens.add(href.split("#")[0])
+    morts = []
+    for href in sorted(liens):
+        try:
+            with urllib.request.urlopen(f"{BASE}/{href}") as r:
+                if r.status != 200:
+                    morts.append((href, r.status))
+        except urllib.error.HTTPError as e:
+            morts.append((href, e.code))
+    verif(f"aucun lien mort parmi les {len(liens)} liens internes rencontres",
+          not morts, str(morts[:4]))
+    # Controle positif : la sonde sait reconnaitre une page absente. Sans lui,
+    # une sonde cassee declarerait « 0 lien mort » sur un site en ruines.
+    absent = None
+    try:
+        urllib.request.urlopen(f"{BASE}/page-qui-nexiste-pas.html")
+    except urllib.error.HTTPError as e:
+        absent = e.code
+    verif("la sonde de liens sait voir une page absente", absent == 404, str(absent))
 
     verif("aucune erreur JavaScript sur l'ensemble", not erreurs, str(erreurs[:2]))
 

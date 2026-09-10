@@ -12,13 +12,20 @@ import html
 import json
 import os
 
-from donnees import (BASELINE, COMPETITIONS, DONNEES, LIGUE, MARQUE, POSTES,
-                     PAYS, PIEDS, VIDE)
+from donnees import (BASELINE, COMPETITIONS, COUPE, DONNEES, LIGUES, MARQUE,
+                     POSTES, PAYS, PIEDS, VIDE)
 
 RACINE = os.path.dirname(os.path.abspath(__file__))
-VERSION_CSS = 4          # a incrementer a CHAQUE modification de assets/site.css
+VERSION_CSS = 5          # a incrementer a CHAQUE modification de assets/site.css
 
 E = html.escape
+
+# Les pages ecrites pendant CETTE generation. Sert au menage final : quand le
+# jeu de donnees change (un club disparait, une ligue est renommee), les pages
+# de l'ancienne version restent sur le disque, sont publiees telles quelles et
+# pointent vers des liens supprimes. Un fichier perime a une adresse valide est
+# pire qu'une page absente : il se lit comme a jour.
+ECRITES = set()
 
 
 def tbd():
@@ -33,6 +40,7 @@ BALLON = ('<svg class="bal" viewBox="0 0 32 32" aria-hidden="true">'
 MENU = [
     ("index.html", "Home"),
     ("live.html", "Live scores"),
+    ("competitions.html", "Competitions"),
     ("players.html", "Players"),
     ("clubs.html", "Clubs"),
     ("recruitment.html", "Recruitment"),
@@ -83,6 +91,7 @@ def page(fichier, titre, description, corps, actuel=None):
     chemin = os.path.join(RACINE, fichier)
     with open(chemin, "w", encoding="utf-8") as f:
         f.write(doc)
+    ECRITES.add(fichier)
     print(f"  {fichier:<22} {len(doc):>7} o")
 
 
@@ -126,6 +135,39 @@ def initiales(nom):
 
 def couleur_club(slug):
     return club_par_slug(slug)["couleur"]
+
+
+def ligue_par_cle(cle):
+    return [l for l in DONNEES["ligues"] if l["cle"] == cle][0]
+
+
+def rang_du_club(club):
+    """La position d'un club dans SON championnat. Aucune autre n'a de sens :
+    un club ne peut pas etre « 3e » dans l'absolu."""
+    table = DONNEES["classements"].get(club["ligue"], [])
+    for ligne in table:
+        if ligne["club_slug"] == club["slug"]:
+            return ligne
+    return None
+
+
+def tableau_classement(cle):
+    lignes = "".join(
+        f'<tr><td class="pos">{l["rang"]}</td>'
+        f'<td><a href="club-{E(l["club_slug"])}.html" style="text-decoration:none">'
+        f'{ecu(couleur_club(l["club_slug"]), l["club"])}</a></td>'
+        f'<td class="n">{l["joues"]}</td><td class="n">{l["victoires"]}</td>'
+        f'<td class="n">{l["nuls"]}</td><td class="n">{l["defaites"]}</td>'
+        f'<td class="n">{l["marques"]}</td><td class="n">{l["encaisses"]}</td>'
+        f'<td class="n">{l["difference"]:+d}</td>'
+        f'<td class="n"><b>{l["points"]}</b></td></tr>'
+        for l in DONNEES["classements"][cle])
+    return f"""<div class="enroule"><table class="tab">
+    <thead><tr><th class="pos">#</th><th>Club</th><th class="n">P</th>
+      <th class="n">W</th><th class="n">D</th><th class="n">L</th>
+      <th class="n">GF</th><th class="n">GA</th><th class="n">GD</th>
+      <th class="n">Pts</th></tr></thead>
+    <tbody>{lignes}</tbody></table></div>"""
 
 
 # ===========================================================================
@@ -333,16 +375,33 @@ def fiche_joueur(j):
 # ===========================================================================
 # 5. CLUBS
 def clubs_liste():
-    cartes = "".join(f"""<a class="carte" href="club-{E(c['slug'])}.html" style="text-decoration:none">
-      <h3>{ecu(c['couleur'], c['nom'])}</h3>
-      <p>{E(c['ville'])}, {E(c['pays'])}<br>{E(c['stade'])} &middot; {c['capacite']:,} seats</p>
-    </a>""".replace(",", " ") for c in DONNEES["clubs"])
+    """Les clubs, GROUPES PAR CHAMPIONNAT. C'est l'ordre demande : la ligue
+    d'abord, les clubs ensuite. Une grille de trente-deux clubs a plat ne dit
+    rien ; la meme grille sous quatre titres se lit d'un coup d'oeil."""
+    blocs = ""
+    for ligue in DONNEES["ligues"]:
+        if ligue["type"] != "championnat":
+            continue
+        cartes = ""
+        for slug in ligue["clubs"]:
+            c = club_par_slug(slug)
+            ligne = rang_du_club(c)
+            rang = f'{ligne["rang"]}<sup>{"st" if ligne["rang"] == 1 else "nd" if ligne["rang"] == 2 else "rd" if ligne["rang"] == 3 else "th"}</sup> &middot; {ligne["points"]} pts' if ligne else ""
+            cartes += f"""<a class="carte" href="club-{E(c['slug'])}.html" style="text-decoration:none">
+              <h3>{ecu(c['couleur'], c['nom'])}</h3>
+              <p>{E(c['ville'])}<br><span style="color:var(--gris-f)">{rang}</span></p></a>"""
+        blocs += f"""<div class="sec-h" style="margin-top:30px">
+            <h2>{E(ligue['nom'])}</h2>
+            <a class="plus" href="league-{E(ligue['cle'])}.html">Table and fixtures &rarr;</a></div>
+          <div class="grille g4">{cartes}</div>"""
+
     return f"""
 <section class="sec"><div class="wrap">
   <h1>Clubs</h1>
-  <p class="chapeau">Ten invented clubs. None of them exists; the cities are
-  real, the clubs are not.</p>
-  <div class="grille g3">{cartes}</div>
+  <p class="chapeau">{len(DONNEES['clubs'])} invented clubs, listed under the
+  competition each one plays in. None of them exists; the cities are real, the
+  clubs are not.</p>
+  {blocs}
 </div></section>
 """
 
@@ -365,18 +424,19 @@ def fiche_club(c):
           <th class="n">Age</th><th class="n">Apps</th><th class="n">G</th></tr></thead>
           <tbody>{lignes}</tbody></table></div>"""
 
-    ligne_cl = [l for l in DONNEES["classement"] if l["club_slug"] == c["slug"]]
-    if ligne_cl:
-        l = ligne_cl[0]
+    l = rang_du_club(c)
+    if l:
         table = (f'<div class="stats"><div class="st"><div class="v">{l["rang"]}</div>'
                  f'<div class="l">Position</div></div>'
                  f'<div class="st"><div class="v">{l["points"]}</div><div class="l">Points</div></div>'
                  f'<div class="st"><div class="v">{l["victoires"]}</div><div class="l">Won</div></div>'
                  f'<div class="st"><div class="v">{l["difference"]:+d}</div><div class="l">GD</div></div></div>')
     else:
-        table = f'<div class="carte"><p>Not in the league shown in this mockup &mdash; {tbd()}</p></div>'
+        table = f'<div class="carte"><p>Not in a league table in this mockup &mdash; {tbd()}</p></div>'
 
-    infos = [("Country", E(c["pays"])), ("City", E(c["ville"])),
+    infos = [("Competition",
+              f'<a href="league-{E(c["ligue"])}.html">{E(c["ligue_nom"])}</a>'),
+             ("Country", E(c["pays"])), ("City", E(c["ville"])),
              ("Stadium", E(c["stade"])), ("Capacity", f'{c["capacite"]:,}'.replace(",", " ")),
              ("Founded", str(c["fonde"])), ("Head coach", tbd()),
              ("President", tbd()), ("Official website", tbd())]
@@ -393,7 +453,7 @@ def fiche_club(c):
     </div></div>
     <div>
       <div class="sec-h"><h2>League position</h2>
-        <a class="plus" href="standings.html">Full table &rarr;</a></div>
+        <a class="plus" href="league-{E(c['ligue'])}.html">Full table &rarr;</a></div>
       {table}
       {blocs}
       <div class="sec-h" style="margin-top:30px"><h2>Recruitment needs</h2></div>
@@ -406,32 +466,70 @@ def fiche_club(c):
 """
 
 
-def classement_page():
-    lignes = "".join(
-        f'<tr><td class="pos">{l["rang"]}</td>'
-        f'<td><a href="club-{E(l["club_slug"])}.html" style="text-decoration:none">'
-        f'{ecu(couleur_club(l["club_slug"]), l["club"])}</a></td>'
-        f'<td class="n">{l["joues"]}</td><td class="n">{l["victoires"]}</td>'
-        f'<td class="n">{l["nuls"]}</td><td class="n">{l["defaites"]}</td>'
-        f'<td class="n">{l["marques"]}</td><td class="n">{l["encaisses"]}</td>'
-        f'<td class="n">{l["difference"]:+d}</td>'
-        f'<td class="n"><b>{l["points"]}</b></td></tr>'
-        for l in DONNEES["classement"])
-    nom_ligue = [n for k, n, _ in COMPETITIONS if k == LIGUE][0]
+def competitions_index():
+    """L'index des competitions. C'est la porte d'entree demandee : on choisit
+    une ligue, puis on voit ses clubs — pas l'inverse."""
+    cartes = ""
+    for ligue in DONNEES["ligues"]:
+        nb = len(ligue["clubs"])
+        if ligue["type"] == "championnat":
+            meneur = DONNEES["classements"][ligue["cle"]][0]
+            bas = f'Leader: <b>{E(meneur["club"])}</b> &middot; {meneur["points"]} pts'
+        else:
+            # Une coupe n'a pas de leader : elle se joue en elimination
+            # directe. Ecrire « 1er » ici serait une erreur de fond.
+            bas = f'Knockout &mdash; no league table'
+        cartes += f"""<a class="carte" href="league-{E(ligue['cle'])}.html"
+          style="text-decoration:none">
+          <h3>{ecu(ligue['couleur'], ligue['nom'])}</h3>
+          <p>{E(ligue['pays'])} &middot; {nb} clubs<br>
+          <span style="color:var(--gris-f)">{bas}</span></p></a>"""
+
     return f"""
 <section class="sec"><div class="wrap">
-  <h1>{E(nom_ligue)}</h1>
-  <p class="chapeau">An invented league of invented clubs. The arithmetic is
-  consistent &mdash; played equals won plus drawn plus lost, and points follow
-  the results &mdash; because a table that does not add up is the first thing
-  a football reader notices.</p>
-  <div class="enroule"><table class="tab">
-    <thead><tr><th class="pos">#</th><th>Club</th><th class="n">P</th>
-      <th class="n">W</th><th class="n">D</th><th class="n">L</th>
-      <th class="n">GF</th><th class="n">GA</th><th class="n">GD</th>
-      <th class="n">Pts</th></tr></thead>
-    <tbody>{lignes}</tbody>
-  </table></div>
+  <h1>Competitions</h1>
+  <p class="chapeau">Four invented leagues of eight clubs each, and one
+  continental cup. A club belongs to exactly one league &mdash; that is what
+  makes &ldquo;first&rdquo; mean something, and the generator refuses to build
+  a dataset where a club sits in two.</p>
+  <div class="grille g3" style="margin-top:22px">{cartes}</div>
+</div></section>
+"""
+
+
+def page_ligue(ligue):
+    matchs = [m for m in DONNEES["matchs"] if m["competition_cle"] == ligue["cle"]]
+    clubs_l = [club_par_slug(s) for s in ligue["clubs"]]
+
+    if ligue["type"] == "championnat":
+        bloc_table = f"""<div class="sec-h"><h2>Table</h2></div>
+        {tableau_classement(ligue["cle"])}"""
+    else:
+        bloc_table = f"""<div class="sec-h"><h2>Table</h2></div>
+        <div class="carte"><p>A cup is played as a knockout, so there is no
+        league table &mdash; and inventing one would be wrong about the sport,
+        not just about the data. The bracket is {tbd()}</p></div>"""
+
+    cartes = "".join(f"""<a class="carte" href="club-{E(c['slug'])}.html"
+      style="text-decoration:none"><h3>{ecu(c['couleur'], c['nom'])}</h3>
+      <p>{E(c['ville'])} &middot; {c['capacite']:,} seats</p></a>""".replace(",", " ")
+                     for c in clubs_l)
+
+    return f"""
+<section class="sec"><div class="wrap">
+  <h1>{E(ligue['nom'])}</h1>
+  <p class="chapeau">{E(ligue['pays'])} &middot; {len(clubs_l)} clubs.
+  Every figure on this page is invented.</p>
+
+  {bloc_table}
+
+  <div class="sec-h" style="margin-top:32px"><h2>Matches</h2>
+    <a class="plus" href="live.html">All competitions &rarr;</a></div>
+  {''.join(bloc_match(m) for m in matchs) if matchs
+   else '<div class="carte"><p>No match scheduled in this mockup.</p></div>'}
+
+  <div class="sec-h" style="margin-top:32px"><h2>Clubs</h2></div>
+  <div class="grille g4">{cartes}</div>
 </div></section>
 """
 
@@ -679,8 +777,9 @@ if __name__ == "__main__":
          "Player rankings and profiles in the mockup.", joueurs_liste())
     page("clubs.html", f"Clubs — {MARQUE}",
          "The ten invented clubs of the mockup.", clubs_liste())
-    page("standings.html", f"Standings — {MARQUE}",
-         "The league table of the mockup.", classement_page(), actuel="clubs.html")
+    page("competitions.html", f"Competitions — {MARQUE}",
+         "The leagues and the cup of the mockup, and who leads each one.",
+         competitions_index())
     page("recruitment.html", f"Recruitment — {MARQUE}",
          "Club job postings and a player search with fourteen working filters.",
          recrutement())
@@ -688,6 +787,10 @@ if __name__ == "__main__":
          "What is invented here, what has to be licensed, and what needs "
          "nobody's permission.", page_donnees())
 
+    for ligue in DONNEES["ligues"]:
+        page(f"league-{ligue['cle']}.html", f"{ligue['nom']} — {MARQUE}",
+             f"Table, matches and clubs of {ligue['nom']} in the mockup.",
+             page_ligue(ligue), actuel="competitions.html")
     for c in DONNEES["clubs"]:
         page(f"club-{c['slug']}.html", f"{c['nom']} — {MARQUE}",
              f"Club profile for {c['nom']} in the mockup.", fiche_club(c),
@@ -697,4 +800,15 @@ if __name__ == "__main__":
              f"Player profile for {j['nom']} in the mockup.", fiche_joueur(j),
              actuel="players.html")
 
+    # Menage : toute page .html presente mais non regeneree vient d'une
+    # version precedente du jeu de donnees.
+    perimees = sorted(f for f in os.listdir(RACINE)
+                      if f.endswith(".html") and f not in ECRITES)
+    for f in perimees:
+        os.remove(os.path.join(RACINE, f))
+    if perimees:
+        print(f"  {len(perimees)} page(s) perimee(s) supprimee(s) :",
+              ", ".join(perimees[:6]) + (" …" if len(perimees) > 6 else ""))
+
+    print(f"{len(ECRITES)} pages")
     print("termine —", RACINE)
