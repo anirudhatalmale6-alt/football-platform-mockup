@@ -9,8 +9,8 @@
   --txt:#E8EEF2;
   --gris:#93A4B1;
   --gris-f:#6B7C89;
-  --vert:#25D07A;
-  --vert-f:#17A45E;
+  --accent:#FF7A18;
+  --accent-f:#E0620A;
   --rouge:#F2545B;
   --jaune:#F0C14B;
   --bleu:#4C9AFF;
@@ -51,14 +51,14 @@ img{max-width:100%}
 .nav{margin-left:auto;display:flex;gap:20px;flex-wrap:wrap;font-size:14px}
 .nav a{color:var(--gris);text-decoration:none;padding:4px 0;border-bottom:2px solid transparent}
 .nav a:hover{color:var(--txt)}
-.nav a[aria-current="page"]{color:var(--txt);border-bottom-color:var(--vert)}
+.nav a[aria-current="page"]{color:var(--txt);border-bottom-color:var(--accent)}
 
 /* ---------- titres --------------------------------------------------- */
 .sec{padding:38px 0}
 .sec-h{display:flex;align-items:baseline;gap:14px;margin-bottom:18px;flex-wrap:wrap}
 .sec-h h2{margin:0;font-size:21px;letter-spacing:-.02em}
 .sec-h .plus{margin-left:auto;font-size:13px;color:var(--gris);text-decoration:none}
-.sec-h .plus:hover{color:var(--vert)}
+.sec-h .plus:hover{color:var(--accent)}
 h1{font-size:34px;line-height:1.15;letter-spacing:-.03em;margin:0 0 12px}
 .chapeau{color:var(--gris);max-width:70ch;margin:0 0 22px}
 
@@ -105,7 +105,7 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.03em;margin:0 0 12px}
 .onglet{background:var(--panneau);border:1px solid var(--ligne);color:var(--gris);
   border-radius:999px;padding:7px 15px;font-size:13px;font-family:inherit;cursor:pointer}
 .onglet:hover{color:var(--txt);border-color:#33434F}
-.onglet[aria-pressed="true"]{background:var(--vert);border-color:var(--vert);color:#04140C;font-weight:700}
+.onglet[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#1F0C00;font-weight:700}
 
 /* ---------- tableau --------------------------------------------------- */
 .tab{width:100%;border-collapse:collapse;font-size:14px}
@@ -152,7 +152,7 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.03em;margin:0 0 12px}
   font-size:14px}
 .champ input[type=range]{padding:0}
 .deux{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.compte{font-family:var(--mono);color:var(--vert);font-size:13px;margin-bottom:12px}
+.compte{font-family:var(--mono);color:var(--accent);font-size:13px;margin-bottom:12px}
 .jr{display:grid;grid-template-columns:38px 1fr auto;gap:12px;align-items:center;
   background:var(--panneau);border:1px solid var(--ligne);border-radius:var(--r);
   padding:11px 14px;text-decoration:none}
@@ -161,8 +161,8 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.03em;margin:0 0 12px}
   font-weight:800;font-size:14px;color:rgba(255,255,255,.85)}
 .jr .meta{color:var(--gris);font-size:13px}
 .jr .dispo{font-size:11px;font-family:var(--mono);text-transform:uppercase;
-  letter-spacing:.05em;color:var(--vert);border:1px solid rgba(37,208,122,.35);
-  background:rgba(37,208,122,.10);border-radius:999px;padding:2px 8px}
+  letter-spacing:.05em;color:var(--accent);border:1px solid rgba(255,122,24,.35);
+  background:rgba(255,122,24,.10);border-radius:999px;padding:2px 8px}
 .rien{color:var(--gris);padding:26px 0;text-align:center}
 
 /* ---------- offres ------------------------------------------------------ */
@@ -175,10 +175,10 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.03em;margin:0 0 12px}
   border-radius:6px;padding:3px 8px;color:var(--gris)}
 
 /* ---------- boutons ------------------------------------------------------ */
-.btn{display:inline-block;background:var(--vert);color:#04140C;font-weight:700;
+.btn{display:inline-block;background:var(--accent);color:#1F0C00;font-weight:700;
   border:0;border-radius:999px;padding:10px 20px;text-decoration:none;font-size:14px;
   font-family:inherit;cursor:pointer}
-.btn:hover{background:var(--vert-f)}
+.btn:hover{background:var(--accent-f)}
 .btn-b{background:transparent;color:var(--txt);border:1px solid var(--ligne)}
 .btn-b:hover{background:var(--panneau2)}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}

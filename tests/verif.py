@@ -236,6 +236,37 @@ with sync_playwright() as p:
         verif(f"{f} : pas de debordement horizontal a 390 px", debord <= 0, str(debord))
     pg.set_viewport_size({"width": 1280, "height": 900})
 
+    # ---- 7. LA COULEUR D'ACCENT -------------------------------------------
+    # Demandee en orange par le client le 9 sept (« orange color for the
+    # football color », theme noir conserve). On la lit sur la couleur
+    # CALCULEE par le navigateur, pas dans la feuille : c'est la seule qui
+    # dise quelle regle a gagne.
+    ACCENT = "rgb(255, 122, 24)"
+    pg.goto(f"{BASE}/live.html", wait_until="networkidle")
+    pg.wait_for_timeout(200)
+    fond_onglet = pg.evaluate("() => getComputedStyle("
+                              "document.querySelector('.onglet[aria-pressed=true]')"
+                              ").backgroundColor")
+    verif("accent : l'onglet actif est orange", fond_onglet == ACCENT, fond_onglet)
+    pg.goto(f"{BASE}/recruitment.html", wait_until="networkidle")
+    pg.wait_for_timeout(500)
+    coul_compte = pg.evaluate("() => getComputedStyle(document.querySelector('.compte')).color")
+    verif("accent : le compteur de resultats est orange", coul_compte == ACCENT, coul_compte)
+    # Le theme reste NOIR : il a dit « you already done it with a black theme ».
+    fond_page = pg.evaluate("() => getComputedStyle(document.body).backgroundColor")
+    verif("accent : le fond reste sombre", fond_page == "rgb(11, 16, 20)", fond_page)
+
+    import urllib.request
+    css = urllib.request.urlopen(f"{BASE}/assets/site.css").read().decode("utf-8")
+    verif("accent : plus aucune trace du vert d'origine",
+          "25D07A" not in css.upper() and "37,208,122" not in css,
+          "le vert subsiste dans la feuille")
+    # Controle positif : la recherche dans la feuille sait trouver une couleur.
+    # Sans lui, une feuille vide ou une URL fausse rendrait le controle
+    # ci-dessus vert sans rien avoir lu.
+    verif("accent : la feuille lue contient bien l'orange",
+          "FF7A18" in css.upper(), f"{len(css)} octets lus")
+
     verif("aucune erreur JavaScript sur l'ensemble", not erreurs, str(erreurs[:2]))
 
     # ---- captures ---------------------------------------------------------

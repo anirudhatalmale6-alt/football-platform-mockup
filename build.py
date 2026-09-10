@@ -16,7 +16,7 @@ from donnees import (BASELINE, COMPETITIONS, DONNEES, LIGUE, MARQUE, POSTES,
                      PAYS, PIEDS, VIDE)
 
 RACINE = os.path.dirname(os.path.abspath(__file__))
-VERSION_CSS = 3          # a incrementer a CHAQUE modification de assets/site.css
+VERSION_CSS = 4          # a incrementer a CHAQUE modification de assets/site.css
 
 E = html.escape
 
@@ -26,8 +26,8 @@ def tbd():
 
 
 BALLON = ('<svg class="bal" viewBox="0 0 32 32" aria-hidden="true">'
-          '<circle cx="16" cy="16" r="14" fill="none" stroke="#25D07A" stroke-width="2"/>'
-          '<path d="M16 7l5.5 4-2.1 6.5h-6.8L10.5 11z" fill="#25D07A"/>'
+          '<circle cx="16" cy="16" r="14" fill="none" stroke="#FF7A18" stroke-width="2"/>'
+          '<path d="M16 7l5.5 4-2.1 6.5h-6.8L10.5 11z" fill="#FF7A18"/>'
           '</svg>')
 
 MENU = [
@@ -182,7 +182,7 @@ def accueil():
   <div class="sec-h"><h2>The rest of the platform</h2></div>
   <div class="grille g4">
     <div class="carte"><h3>Recruitment</h3>
-      <p><b style="color:var(--vert);font-family:var(--mono)">{dispo}</b> players
+      <p><b style="color:var(--accent);font-family:var(--mono)">{dispo}</b> players
       listed as available in this mockup, filterable by fourteen criteria.</p></div>
     <div class="carte"><h3>Transfers</h3>
       <p>{tbd()}<br>A transfer database is a licensed feed, not something a site
